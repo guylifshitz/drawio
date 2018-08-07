@@ -2279,7 +2279,7 @@ var ParseDialog = function(editorUi, title, defaultType)
 				graph.scrollCellToVisible(graph.getSelectionCell());
 			}
 		}
-		else if (type == 'list')
+		else if (type == 'listOld')
 		{
 			if (lines.length > 0)
 			{
@@ -2343,6 +2343,205 @@ var ParseDialog = function(editorUi, title, defaultType)
 				
 				graph.setSelectionCell(listCell);
 				graph.scrollCellToVisible(graph.getSelectionCell());
+			}
+		}
+		else if (type == 'list')
+		{
+
+			var colorMappings = {"Fournisseur" : "#5359FC", "OrdreService": "#ACA2DB", "Mission": "#78CDFF",
+								"Client": "#9DE894",  "Gestionnaire": "#22995D", 
+								"Immeuble": "#B85450", "Lot": "#F7C79D",};
+
+			var vertices = new Object();
+			var cells = [];
+			
+			function getOrCreateVertex(id)
+			{
+				var vertex = vertices[id];
+		
+				if (vertex == null)
+				{
+					// vertex = new mxCell(id, new mxGeometry(0, 0, 80, 30), 'whiteSpace=wrap;html=1;');
+					var fontColor = "#000000";
+					if (id in colorMappings){
+						fontColor = colorMappings[id];
+					}
+
+					vertex = new mxCell(id, new mxGeometry(0, 0, 160, 26 + 4),
+					    'swimlane;fontStyle=1;childLayout=stackLayout;horizontal=1;startSize=26;horizontalStack=0;resizeParent=1;resizeLast=0;collapsible=1;marginBottom=0;swimlaneFillColor=#ffffff;fontColor='+fontColor);
+					vertex.vertex = true;
+					vertices[id] = vertex;
+					cells.push(vertex);
+				}
+				
+				return vertex;
+			};
+			
+			// Build the objects first
+			for (var i = 0; i < lines.length; i++)
+			{
+				var line = lines[i];
+
+				if (line.startsWith("object "))
+				{
+					line = line.substr(7);
+					var source = getOrCreateVertex(line);
+				}
+			}
+
+// fournisseur, mission, ordre service (blue/purple)
+// light blue B8CFFF      mission
+// dark blue B77BFC fournisseur
+// purple 2 ACA2DB   ordre service
+
+// IMME / Lot (brown/red)
+// red/brown  B85450  Imme
+// light brown F7C79D  Lot
+
+
+// Client / Gestionnaire   (green)
+// dark green 48CFD4   Gestionnaire
+// green 9DE894  Client
+
+
+			// Add attributes to the objects
+			for (var i = 0; i < lines.length; i++)
+			{
+				var line = lines[i];
+
+				if (line.indexOf(":") != -1)
+				{
+					var graph = new Graph(container);
+
+					var values = line.split(':');
+
+					if (values.length == 2)
+					{
+						var object = getOrCreateVertex(values[0].trim());
+
+						var linkColor = 'none';
+
+						for(var key in colorMappings) {
+							if (line.indexOf("=> "+ key) != -1){
+								linkColor = colorMappings[key];
+							}
+						}
+
+						var fieldText = values[1].trim();
+						var field = new mxCell(fieldText, new mxGeometry(0, 0, 60, 26), 'text;strokeColor=none;fillColor='+linkColor+';align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;');
+						field.vertex = true;
+						
+						var size = graph.getPreferredSizeForCell(field);
+
+			   			if (size != null && field.geometry.width < size.width)
+			   			{
+			   				field.geometry.width = size.width;
+			   			}
+			   			object.geometry.width = Math.max(object.geometry.width, field.geometry.width);
+						object.geometry.height += field.geometry.height;
+						object.insert(field);
+						cells.push(field);
+					}
+				}
+			}
+
+			// Now link the objects
+			var foreignKeys = [];
+			for (var i = 0; i < lines.length; i++)
+			{
+				var line = lines[i];
+				if (line.indexOf(":") != -1 && line.indexOf("=>") != -1)
+				{
+					foreignKeys.push(line.split(":")[0].trim() + "->" + line.split("=>")[1].trim())
+				}
+			}
+
+			function onlyUnique(value, index, self) { 
+			    return self.indexOf(value) === index;
+			}
+			var uniqueForeignKeys = foreignKeys.filter( onlyUnique );
+
+			for (var i = 0; i < uniqueForeignKeys.length; i++)
+			{
+				var line = uniqueForeignKeys[i];
+				if (line.indexOf("->") != -1)
+				{
+					var values = line.split('->');
+
+					if (values.length == 2)
+					{
+						var source = getOrCreateVertex(values[0].trim());
+						var target = getOrCreateVertex(values[1].trim());
+
+						var linkColor = 'black';
+						if (values[1].trim() in colorMappings){
+							linkColor = colorMappings[values[1].trim()];
+						}
+
+						var edge = new mxCell('', new mxGeometry(), 'strokeColor='+linkColor+';strokeWidth=3;');
+						edge.edge = true;
+						source.insertEdge(edge, true);
+						target.insertEdge(edge, false);
+						cells.push(edge);
+					}
+				}
+			}
+
+			if (cells.length > 0)
+			{
+				var container = document.createElement('div');
+				container.style.visibility = 'hidden';
+				document.body.appendChild(container);
+				
+				// Temporary graph for running the layout
+				var graph = new Graph(container);
+				
+				graph.getModel().beginUpdate();
+				try
+				{
+					cells = graph.importCells(cells);
+					
+					for (var i = 0; i < cells.length; i++)
+					{
+						if (graph.getModel().isVertex(cells[i]))
+						{
+							var size = graph.getPreferredSizeForCell(cells[i]);
+							cells[i].geometry.width = Math.max(cells[i].geometry.width, size.width);
+							cells[i].geometry.height = Math.max(cells[i].geometry.height, size.height);
+						}
+					}
+		
+					var layout = new mxFastOrganicLayout(graph);
+					layout.disableEdgeStyle = false;
+					layout.forceConstant = 120;
+					layout.execute(graph.getDefaultParent());
+				}
+				finally
+				{
+					graph.getModel().endUpdate();
+				}
+				
+				graph.clearCellOverlays();
+				
+				// Copy to actual graph
+				var inserted = [];
+				
+				editorUi.editor.graph.getModel().beginUpdate();
+				try
+				{
+					inserted = editorUi.editor.graph.importCells(graph.getModel().getChildren(
+						graph.getDefaultParent()), insertPoint.x, insertPoint.y)
+					editorUi.editor.graph.fireEvent(new mxEventObject('cellsInserted', 'cells', inserted));
+				}
+				finally
+				{
+					editorUi.editor.graph.getModel().endUpdate();
+				}
+
+				editorUi.editor.graph.setSelectionCells(inserted);
+				editorUi.editor.graph.scrollCellToVisible(editorUi.editor.graph.getSelectionCell());
+				graph.destroy();
+				container.parentNode.removeChild(container);
 			}
 		}
 		else
