@@ -2348,9 +2348,19 @@ var ParseDialog = function(editorUi, title, defaultType)
 		else if (type == 'list')
 		{
 
-			var colorMappings = {"Fournisseur" : "#5359FC", "OrdreService": "#ACA2DB", "Mission": "#78CDFF",
-								"Client": "#9DE894",  "Gestionnaire": "#22995D", 
-								"Immeuble": "#B85450", "Lot": "#F7C79D",};
+            var colorMappings = {};
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                if (line.indexOf(':color:') != -1) {
+                    var values = line.split(':');
+
+                    if (values.length == 3) {
+                        var objectName = values[0].trim();
+                        var colorCode = values[2].trim();
+                        colorMappings[objectName] = colorCode;
+                    }
+                }
+            }
 
 			var vertices = new Object();
 			var cells = [];
